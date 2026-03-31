@@ -246,7 +246,7 @@ async def summarize_url(body: URLSummarizeRequest, request: Request):
         async with httpx.AsyncClient(
             timeout=15.0,
             follow_redirects=True,
-            headers={"User-Agent": "SummarizationAPI/1.0 (+https://mainlayer.xyz)"},
+            headers={"User-Agent": "SummarizationAPI/1.0 (+https://mainlayer.fr)"},
         ) as client:
             response = await client.get(body.url)
             response.raise_for_status()

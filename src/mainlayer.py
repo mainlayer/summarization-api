@@ -2,7 +2,7 @@
 Mainlayer billing client.
 
 Mainlayer is the pay-per-call billing layer for AI APIs.
-Base URL: https://api.mainlayer.xyz
+Base URL: https://api.mainlayer.fr
 Auth:     Authorization: Bearer <api_key>
 
 This module provides:
@@ -23,7 +23,7 @@ from fastapi import HTTPException, Request, status
 
 logger = logging.getLogger(__name__)
 
-MAINLAYER_BASE_URL = os.getenv("MAINLAYER_BASE_URL", "https://api.mainlayer.xyz")
+MAINLAYER_BASE_URL = os.getenv("MAINLAYER_BASE_URL", "https://api.mainlayer.fr")
 MAINLAYER_API_KEY = os.getenv("MAINLAYER_API_KEY", "")
 DEV_MODE = os.getenv("MAINLAYER_DEV_MODE", "false").lower() == "true"
 
@@ -85,11 +85,11 @@ async def verify_payment(request: Request, endpoint: str) -> None:
                 "error": "payment_required",
                 "message": (
                     "A valid Mainlayer payment token is required. "
-                    "Obtain one at https://mainlayer.xyz and pass it in the "
+                    "Obtain one at https://mainlayer.fr and pass it in the "
                     "X-Mainlayer-Token header."
                 ),
                 "price_usd": PRICES.get(endpoint, 0.0),
-                "docs": "https://docs.mainlayer.xyz/quickstart",
+                "docs": "https://docs.mainlayer.fr/quickstart",
             },
         )
 
