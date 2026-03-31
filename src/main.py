@@ -152,28 +152,56 @@ async def list_models():
     response_model=SummaryResponse,
     status_code=status.HTTP_200_OK,
     tags=["Summarization"],
-    summary="Summarize text  [$0.002/call]",
+    summary="Summarize text [$0.002/call]",
 )
 async def summarize_text(body: SummarizeRequest, request: Request):
     """
-    Summarize a block of text.
+    Summarize a block of text to a shorter summary.
 
     **Cost**: $0.002 per call (billed via Mainlayer).
 
-    Pass your Mainlayer payment token in the `X-Mainlayer-Token` header.
-    Set `MAINLAYER_DEV_MODE=true` to skip billing during development.
+    **Styles**:
+    - `paragraph`: Flowing prose (default)
+    - `bullet`: Each key sentence as a bullet point
+    - `tldr`: Single compact sentence prefixed with "TL;DR:"
+
+    **Headers**:
+    - `X-Mainlayer-Token`: Your Mainlayer payment token (required, unless MAINLAYER_DEV_MODE=true)
+
+    **Example**:
+    ```bash
+    curl -X POST http://localhost:8000/summarize \\
+      -H "Content-Type: application/json" \\
+      -H "X-Mainlayer-Token: your_token" \\
+      -d '{
+        "text": "Your long text here...",
+        "max_length": 150,
+        "style": "paragraph"
+      }'
+    ```
     """
     await verify_payment(request, "/summarize")
 
-    summary = summarize(body.text, body.max_length, body.style)
-    word_count = len(summary.split())
-    compression = compute_compression_ratio(body.text, summary)
+    try:
+        summary = summarize(body.text, body.max_length, body.style)
+        word_count = len(summary.split())
+        compression = compute_compression_ratio(body.text, summary)
+    except Exception as exc:
+        logger.error(f"Summarization failed: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Summarization failed. Please try again with a different input.",
+        )
 
     token = _get_payment_token(request)
     await record_usage(
         "/summarize",
         token,
-        {"style": body.style, "original_words": len(body.text.split())},
+        {
+            "style": body.style,
+            "original_words": len(body.text.split()),
+            "summary_words": word_count,
+        },
     )
 
     return SummaryResponse(
@@ -188,37 +216,66 @@ async def summarize_text(body: SummarizeRequest, request: Request):
     response_model=BatchSummaryResponse,
     status_code=status.HTTP_200_OK,
     tags=["Summarization"],
-    summary="Batch summarize texts  [$0.0015/call]",
+    summary="Batch summarize texts [$0.0015/call]",
 )
 async def summarize_batch(body: BatchSummarizeRequest, request: Request):
     """
     Summarize multiple texts in a single request (1–20 items).
 
-    **Cost**: $0.0015 per call regardless of batch size.
+    **Cost**: $0.0015 per call regardless of batch size. More cost-effective than individual calls.
 
-    Pass your Mainlayer payment token in the `X-Mainlayer-Token` header.
+    **Benefits**:
+    - Summarize up to 20 texts per request
+    - Single payment charge for the entire batch
+    - Parallel processing
+
+    **Headers**:
+    - `X-Mainlayer-Token`: Your Mainlayer payment token (required)
+
+    **Example**:
+    ```bash
+    curl -X POST http://localhost:8000/summarize/batch \\
+      -H "Content-Type: application/json" \\
+      -H "X-Mainlayer-Token: your_token" \\
+      -d '{
+        "items": [
+          {"text": "Text 1...", "max_length": 100, "style": "bullet"},
+          {"text": "Text 2...", "max_length": 150, "style": "paragraph"}
+        ]
+      }'
+    ```
     """
     await verify_payment(request, "/summarize/batch")
 
     results: list[BatchSummaryItem] = []
-    for idx, item in enumerate(body.items):
-        summary = summarize(item.text, item.max_length, item.style)
-        word_count = len(summary.split())
-        compression = compute_compression_ratio(item.text, summary)
-        results.append(
-            BatchSummaryItem(
-                index=idx,
-                summary=summary,
-                word_count=word_count,
-                compression_ratio=compression,
+    try:
+        for idx, item in enumerate(body.items):
+            summary = summarize(item.text, item.max_length, item.style)
+            word_count = len(summary.split())
+            compression = compute_compression_ratio(item.text, summary)
+            results.append(
+                BatchSummaryItem(
+                    index=idx,
+                    summary=summary,
+                    word_count=word_count,
+                    compression_ratio=compression,
+                )
             )
+    except Exception as exc:
+        logger.error(f"Batch summarization failed at item {len(results)}: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Batch processing failed at item {len(results)+1}. Check input format.",
         )
 
     token = _get_payment_token(request)
     await record_usage(
         "/summarize/batch",
         token,
-        {"batch_size": len(body.items)},
+        {
+            "batch_size": len(body.items),
+            "successful": len(results),
+        },
     )
 
     return BatchSummaryResponse(results=results, total_items=len(results))
